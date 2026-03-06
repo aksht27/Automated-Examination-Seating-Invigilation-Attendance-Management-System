@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faculty | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html" class="active"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Faculty Management</h1>
+      <div class="top-actions">
+        <input type="text" id="search-input" placeholder="Search faculty..." oninput="filterTable()" class="search-box">
+        <button class="btn btn-primary" onclick="openModal('add')">+ Add Faculty</button>
+        <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-body">
+          <table class="data-table" id="faculty-table">
+            <thead>
+              <tr>
+                <th onclick="sortTable(0)">Name ↕</th>
+                <th onclick="sortTable(1)">Department ↕</th>
+                <th onclick="sortTable(2)">Designation ↕</th>
+                <th onclick="sortTable(3)">Total Duties ↕</th>
+                <th>Login Username</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="faculty-tbody"><tr><td colspan="6" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="faculty-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Add Faculty</h2>
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+    </div>
+    <form onsubmit="saveFaculty(event)">
+      <input type="hidden" id="edit-id">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="f-name" required>
+      </div>
+      <div class="form-group">
+        <label>Department</label>
+        <input type="text" id="f-dept" required placeholder="e.g. Computer Engineering">
+      </div>
+      <div class="form-group">
+        <label>Designation</label>
+        <input type="text" id="f-desig" required placeholder="e.g. Assistant Professor">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+let editMode = false;
+const API = '../api/faculty.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadFaculty();
+})();
+
+async function loadFaculty() {
+  const res  = await fetch(API + '?action=list');
+  const data = await res.json();
+  const tbody = document.getElementById('faculty-tbody');
+  tbody.innerHTML = data.data && data.data.length
+    ? data.data.map(f => `
+        <tr>
+          <td>${f.name}</td><td>${f.department}</td><td>${f.designation}</td>
+          <td>${f.total_duties}</td>
+          <td>fac${f.faculty_id}</td>
+          <td>
+            <button class="btn btn-sm btn-warning" onclick='openModal("edit", ${JSON.stringify(f)})'>Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteFaculty(${f.faculty_id})">Delete</button>
+          </td>
+        </tr>`).join('')
+    : '<tr><td colspan="6" class="text-center">No faculty found.</td></tr>';
+}
+
+function openModal(mode, f = null) {
+  editMode = mode === 'edit';
+  document.getElementById('modal-title').textContent = editMode ? 'Edit Faculty' : 'Add Faculty';
+  document.getElementById('edit-id').value  = f ? f.faculty_id : '';
+  document.getElementById('f-name').value   = f ? f.name : '';
+  document.getElementById('f-dept').value   = f ? f.department : '';
+  document.getElementById('f-desig').value  = f ? f.designation : '';
+  document.getElementById('faculty-modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('faculty-modal').style.display = 'none'; }
+
+async function saveFaculty(e) {
+  e.preventDefault();
+  const payload = {
+    action: editMode ? 'edit' : 'add',
+    faculty_id:  document.getElementById('edit-id').value,
+    name:        document.getElementById('f-name').value,
+    department:  document.getElementById('f-dept').value,
+    designation: document.getElementById('f-desig').value,
+  };
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) { closeModal(); loadFaculty(); }
+}
+
+async function deleteFaculty(id) {
+  if (!confirm('Delete this faculty member?')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'delete', faculty_id: id}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadFaculty();
+}
+
+function exportCSV() { exportTableToCSV('faculty-table', 'faculty.csv'); }
+function filterTable() { filterTableFn('faculty-table', document.getElementById('search-input').value); }
+function sortTable(col) { sortTableFn('faculty-table', col); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

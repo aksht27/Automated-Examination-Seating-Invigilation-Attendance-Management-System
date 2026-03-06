@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html" class="active"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Reports &amp; Analytics</h1>
+    </header>
+    <div class="page-body">
+      <!-- Controls -->
+      <div class="card mb-4">
+        <div class="card-body row-flex gap-2 flex-wrap">
+          <div class="form-group mb-0">
+            <label>Report Type</label>
+            <select id="report-type" onchange="onTypeChange()">
+              <option value="seating">Seating Chart</option>
+              <option value="duty">Invigilation Duty</option>
+              <option value="attendance">Attendance Report</option>
+              <option value="faculty_summary">Faculty Duty Summary</option>
+              <option value="utilization">Room Utilization</option>
+              <option value="timetable">Exam Timetable</option>
+            </select>
+          </div>
+          <div class="form-group mb-0" id="exam-group">
+            <label>Exam</label>
+            <select id="exam-select">
+              <option value="">-- Select Exam --</option>
+            </select>
+          </div>
+          <div class="btn-group ml-auto" style="align-self:flex-end">
+            <button class="btn btn-primary" onclick="generateReport()">Generate</button>
+            <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+            <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="card">
+        <div class="card-header"><h2 id="report-title">Select a report type and click Generate</h2></div>
+        <div class="card-body" id="report-container">
+          <p class="text-center text-muted">No report generated yet.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/reports.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadExams();
+})();
+
+async function loadExams() {
+  const res  = await fetch(API + '?action=list_exams');
+  const data = await res.json();
+  const sel  = document.getElementById('exam-select');
+  if (data.data) data.data.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.exam_id;
+    opt.textContent = `${e.exam_name} (${e.date})`;
+    sel.appendChild(opt);
+  });
+}
+
+function onTypeChange() {
+  const t = document.getElementById('report-type').value;
+  const needExam = ['seating','duty','attendance'].includes(t);
+  document.getElementById('exam-group').style.display = needExam ? '' : 'none';
+}
+
+const reportMeta = {
+  seating:        { title: 'Seating Chart',         cols: ['Exam','Date','Room','Building','Roll No','Name','Branch','Sem','Section','Seat','Row'] },
+  duty:           { title: 'Invigilation Duties',    cols: ['Exam','Date','Faculty','Department','Room','Building','Duty Type'] },
+  attendance:     { title: 'Attendance Report',      cols: ['Exam','Date','Roll No','Name','Branch','Section','Room','Status'] },
+  faculty_summary:{ title: 'Faculty Duty Summary',   cols: ['Name','Department','Recorded Duties','Actual Duties'] },
+  utilization:    { title: 'Room Utilization',       cols: ['Room No','Building','Capacity','Used','Utilization %'] },
+  timetable:      { title: 'Exam Timetable',         cols: ['Date','Session','Subject','Start','End','Exam Name'] },
+};
+
+async function generateReport() {
+  const type = document.getElementById('report-type').value;
+  const eid  = document.getElementById('exam-select').value;
+  const needExam = ['seating','duty','attendance'].includes(type);
+  if (needExam && !eid) { showToast('Please select an exam.', 'error'); return; }
+
+  let url = `${API}?action=${type}`;
+  if (needExam) url += `&exam_id=${eid}`;
+
+  const res  = await fetch(url);
+  const data = await res.json();
+  if (!data.success) { showToast('Failed to generate report.', 'error'); return; }
+
+  const { title, cols } = reportMeta[type];
+  document.getElementById('report-title').textContent = title;
+
+  const rows  = data.data || [];
+  const keys  = {
+    seating:         d => [d.exam_name,d.date,d.room_no,d.building,d.roll_no,d.name,d.branch,d.semester,d.section,d.seat_no,d.row_no],
+    duty:            d => [d.exam_name,d.date,d.faculty_name,d.department,d.room_no,d.building,d.duty_type],
+    attendance:      d => [d.exam_name,d.date,d.roll_no,d.name,d.branch,d.section,d.room_no,d.status],
+    faculty_summary: d => [d.name,d.department,d.total_duties,d.actual_duties],
+    utilization:     d => [d.room_no,d.building,d.capacity,d.used,d.util_pct+'%'],
+    timetable:       d => [d.exam_date,d.session,d.subject_name,d.start_time,d.end_time,d.exam_name],
+  };
+
+  const tbody_rows = rows.map(d => '<tr>' + keys[type](d).map(v => `<td>${v??''}</td>`).join('') + '</tr>').join('');
+  document.getElementById('report-container').innerHTML = `
+    <table class="data-table" id="report-table">
+      <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+      <tbody>${tbody_rows || '<tr><td colspan="'+cols.length+'" class="text-center">No data.</td></tr>'}</tbody>
+    </table>`;
+}
+
+function exportCSV() {
+  const t = document.getElementById('report-table');
+  if (!t) { showToast('Generate a report first.', 'error'); return; }
+  exportTableToCSV('report-table', 'report.csv');
+}
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+onTypeChange(); // init
+</script>
+</body>
+</html>

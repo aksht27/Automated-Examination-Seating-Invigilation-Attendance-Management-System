@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard | Exam Management</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>Exam System</h2>
+      <p id="user-label"></p>
+    </div>
+    <nav id="admin-nav" class="nav-links" style="display:none">
+      <a href="dashboard.html" class="active"><i>⊞</i> Dashboard</a>
+      <a href="modules/students.html"><i>👥</i> Students</a>
+      <a href="modules/faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="modules/rooms.html"><i>🚪</i> Rooms</a>
+      <a href="modules/schedule.html"><i>📅</i> Schedule</a>
+      <a href="modules/seating.html"><i>💺</i> Seating</a>
+      <a href="modules/invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="modules/attendance.html"><i>✅</i> Attendance</a>
+      <a href="modules/replacement.html"><i>🔄</i> Replacement</a>
+      <a href="modules/reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+    <nav id="examcell-nav" class="nav-links" style="display:none">
+      <a href="dashboard.html" class="active"><i>⊞</i> Dashboard</a>
+      <a href="modules/students.html"><i>👥</i> Students</a>
+      <a href="modules/faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="modules/rooms.html"><i>🚪</i> Rooms</a>
+      <a href="modules/schedule.html"><i>📅</i> Schedule</a>
+      <a href="modules/seating.html"><i>💺</i> Seating</a>
+      <a href="modules/invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="modules/reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+    <nav id="faculty-nav" class="nav-links" style="display:none">
+      <a href="dashboard.html" class="active"><i>⊞</i> Dashboard</a>
+      <a href="modules/attendance.html"><i>✅</i> Attendance</a>
+      <a href="modules/replacement.html"><i>🔄</i> Replacement</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Dashboard</h1>
+    </header>
+
+    <div class="page-body">
+      <!-- Stats Cards -->
+      <div class="stats-grid">
+        <div class="stat-card blue">
+          <div class="stat-icon">👥</div>
+          <div class="stat-info">
+            <h3 id="cnt-students">—</h3>
+            <p>Total Students</p>
+          </div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-icon">👨‍🏫</div>
+          <div class="stat-info">
+            <h3 id="cnt-faculty">—</h3>
+            <p>Total Faculty</p>
+          </div>
+        </div>
+        <div class="stat-card orange">
+          <div class="stat-icon">🚪</div>
+          <div class="stat-info">
+            <h3 id="cnt-rooms">—</h3>
+            <p>Total Rooms</p>
+          </div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-icon">📋</div>
+          <div class="stat-info">
+            <h3 id="cnt-exams">—</h3>
+            <p>Total Exams</p>
+          </div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-icon">💺</div>
+          <div class="stat-info">
+            <h3 id="cnt-allocated">—</h3>
+            <p>Seating Allocated</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Exams -->
+      <div class="card mt-4">
+        <div class="card-header"><h2>Upcoming / Recent Exams</h2></div>
+        <div class="card-body">
+          <table class="data-table" id="recent-table">
+            <thead><tr><th>Exam Name</th><th>Date</th><th>Session</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/script.js"></script>
+<script>
+(async () => {
+  // Auth check
+  const res  = await fetch('api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = 'index.html'; return; }
+
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  const role = auth.role;
+  if (role === 'admin')     document.getElementById('admin-nav').style.display = '';
+  if (role === 'exam_cell') document.getElementById('examcell-nav').style.display = '';
+  if (role === 'faculty')   document.getElementById('faculty-nav').style.display = '';
+
+  // Load stats
+  const sr   = await fetch('api/dashboard.php?action=stats');
+  const data = await sr.json();
+  if (!data.success) return;
+
+  document.getElementById('cnt-students').textContent  = data.students;
+  document.getElementById('cnt-faculty').textContent   = data.faculty;
+  document.getElementById('cnt-rooms').textContent     = data.rooms;
+  document.getElementById('cnt-exams').textContent     = data.exams;
+  document.getElementById('cnt-allocated').textContent = data.allocated;
+
+  const tbody = document.querySelector('#recent-table tbody');
+  tbody.innerHTML = data.recent.length
+    ? data.recent.map(e => `<tr><td>${e.exam_name}</td><td>${e.date}</td><td>${e.session}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="text-center">No exams yet.</td></tr>';
+})();
+
+async function logout() {
+  await fetch('api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({action:'logout'}) });
+  window.location.href = 'index.html';
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+}
+</script>
+</body>
+</html>

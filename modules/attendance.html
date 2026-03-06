@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html" class="active"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Attendance</h1>
+    </header>
+    <div class="page-body">
+      <div class="card mb-4">
+        <div class="card-body row-flex gap-2">
+          <div class="form-group mb-0 flex-1">
+            <label>Select Exam</label>
+            <select id="exam-select" onchange="loadRooms()">
+              <option value="">-- Select Exam --</option>
+            </select>
+          </div>
+          <div class="form-group mb-0 flex-1">
+            <label>Select Room</label>
+            <select id="room-select" onchange="loadSheet()">
+              <option value="">-- Select Room --</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header row-flex">
+          <h2>Attendance Sheet</h2>
+          <div class="btn-group ml-auto">
+            <button class="btn btn-success" onclick="saveAttendance()">💾 Save</button>
+            <button class="btn btn-secondary" onclick="markAll('Present')">✅ Mark All Present</button>
+            <button class="btn btn-secondary" onclick="markAll('Absent')">❌ Mark All Absent</button>
+            <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <table class="data-table" id="attendance-table">
+            <thead>
+              <tr>
+                <th>Seat</th><th>Roll No</th><th>Name</th><th>Branch</th>
+                <th>Present</th><th>Absent</th>
+              </tr>
+            </thead>
+            <tbody id="attendance-tbody">
+              <tr><td colspan="6" class="text-center">Select exam and room.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/attendance.php';
+let sheetData = [];
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadExams();
+})();
+
+async function loadExams() {
+  const res  = await fetch(API + '?action=list_exams');
+  const data = await res.json();
+  const sel  = document.getElementById('exam-select');
+  if (data.data) data.data.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.exam_id;
+    opt.textContent = `${e.exam_name} (${e.date})`;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadRooms() {
+  const eid = document.getElementById('exam-select').value;
+  const sel = document.getElementById('room-select');
+  sel.innerHTML = '<option value="">-- Select Room --</option>';
+  if (!eid) return;
+  const res  = await fetch(`${API}?action=get_rooms&exam_id=${eid}`);
+  const data = await res.json();
+  if (data.data) data.data.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.room_id;
+    opt.textContent = `${r.room_no} (${r.building})`;
+    sel.appendChild(opt);
+  });
+  document.getElementById('attendance-tbody').innerHTML =
+    '<tr><td colspan="6" class="text-center">Select a room.</td></tr>';
+}
+
+async function loadSheet() {
+  const eid = document.getElementById('exam-select').value;
+  const rid = document.getElementById('room-select').value;
+  if (!eid || !rid) return;
+  const res  = await fetch(`${API}?action=get_sheet&exam_id=${eid}&room_id=${rid}`);
+  const data = await res.json();
+  sheetData = data.data || [];
+  renderSheet();
+}
+
+function renderSheet() {
+  const tbody = document.getElementById('attendance-tbody');
+  tbody.innerHTML = sheetData.length
+    ? sheetData.map((s, i) => `
+        <tr>
+          <td>${s.seat_no}</td><td>${s.roll_no}</td><td>${s.name}</td><td>${s.branch}</td>
+          <td><input type="radio" name="att_${i}" value="Present" ${s.status==='Present'?'checked':''}></td>
+          <td><input type="radio" name="att_${i}" value="Absent"  ${s.status==='Absent' ?'checked':''}></td>
+        </tr>`).join('')
+    : '<tr><td colspan="6" class="text-center">No students found for this exam/room.</td></tr>';
+}
+
+function markAll(status) {
+  sheetData.forEach((_, i) => {
+    const r = document.querySelector(`input[name="att_${i}"][value="${status}"]`);
+    if (r) r.checked = true;
+  });
+}
+
+async function saveAttendance() {
+  const eid = document.getElementById('exam-select').value;
+  const rid = document.getElementById('room-select').value;
+  if (!eid || !rid) { showToast('Select exam and room.', 'error'); return; }
+  const records = sheetData.map((s, i) => {
+    const sel = document.querySelector(`input[name="att_${i}"]:checked`);
+    return { allocation_id: s.allocation_id, status: sel ? sel.value : 'Absent' };
+  });
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'mark', exam_id: eid, room_id: rid, records }) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+}
+
+function exportCSV() { exportTableToCSV('attendance-table', 'attendance.csv'); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

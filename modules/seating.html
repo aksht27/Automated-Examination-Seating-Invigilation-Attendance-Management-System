@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seating | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html" class="active"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Seating Allocation</h1>
+    </header>
+    <div class="page-body">
+      <!-- Exam Selector -->
+      <div class="card mb-4">
+        <div class="card-body row-flex">
+          <div class="form-group mb-0 flex-1">
+            <label>Select Exam</label>
+            <select id="exam-select" onchange="loadChart()">
+              <option value="">-- Select Exam --</option>
+            </select>
+          </div>
+          <div class="btn-group ml-auto">
+            <button class="btn btn-primary" onclick="allocate()">🔧 Auto Allocate</button>
+            <button class="btn btn-danger" onclick="clearSeating()">🗑 Clear</button>
+            <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+            <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seating Chart -->
+      <div class="card">
+        <div class="card-header"><h2>Seating Chart</h2></div>
+        <div class="card-body">
+          <table class="data-table" id="seating-table">
+            <thead>
+              <tr>
+                <th>Room</th><th>Building</th><th>Seat No</th><th>Row</th>
+                <th>Roll No</th><th>Name</th><th>Branch</th><th>Semester</th><th>Section</th>
+              </tr>
+            </thead>
+            <tbody id="seating-tbody"><tr><td colspan="9" class="text-center">Select an exam to view seating.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/seating.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadExams();
+})();
+
+async function loadExams() {
+  const res  = await fetch(API + '?action=list_exams');
+  const data = await res.json();
+  const sel  = document.getElementById('exam-select');
+  if (data.data) data.data.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.exam_id;
+    opt.textContent = `${e.exam_name} (${e.date} – ${e.session})`;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadChart() {
+  const eid = document.getElementById('exam-select').value;
+  if (!eid) return;
+  const res  = await fetch(`${API}?action=get_chart&exam_id=${eid}`);
+  const data = await res.json();
+  const tbody = document.getElementById('seating-tbody');
+  tbody.innerHTML = data.data && data.data.length
+    ? data.data.map(s => `
+        <tr>
+          <td>${s.room_no}</td><td>${s.building}</td><td>${s.seat_no}</td><td>${s.row_no}</td>
+          <td>${s.roll_no}</td><td>${s.name}</td><td>${s.branch}</td>
+          <td>${s.semester}</td><td>${s.section}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="9" class="text-center">No seating allocated yet.</td></tr>';
+}
+
+async function allocate() {
+  const eid = document.getElementById('exam-select').value;
+  if (!eid) { showToast('Select an exam first.', 'error'); return; }
+  if (!confirm('Auto-allocate seats for this exam?')) return;
+  showToast('Allocating...', 'info');
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'allocate', exam_id: eid}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadChart();
+}
+
+async function clearSeating() {
+  const eid = document.getElementById('exam-select').value;
+  if (!eid) { showToast('Select an exam first.', 'error'); return; }
+  if (!confirm('Clear all seating for this exam?')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'clear', exam_id: eid}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadChart();
+}
+
+function exportCSV() { exportTableToCSV('seating-table', 'seating.csv'); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

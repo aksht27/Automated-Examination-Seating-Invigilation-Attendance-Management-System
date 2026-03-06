@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rooms | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html" class="active"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Room Management</h1>
+      <div class="top-actions">
+        <input type="text" id="search-input" placeholder="Search rooms..." oninput="filterTable()" class="search-box">
+        <button class="btn btn-primary" onclick="openModal('add')">+ Add Room</button>
+        <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="stats-row mb-3" id="capacity-row"></div>
+      <div class="card">
+        <div class="card-body">
+          <table class="data-table" id="rooms-table">
+            <thead>
+              <tr>
+                <th onclick="sortTable(0)">Room No ↕</th>
+                <th onclick="sortTable(1)">Building ↕</th>
+                <th onclick="sortTable(2)">Capacity ↕</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rooms-tbody"><tr><td colspan="4" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="room-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Add Room</h2>
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+    </div>
+    <form onsubmit="saveRoom(event)">
+      <input type="hidden" id="edit-id">
+      <div class="form-group">
+        <label>Room Number</label>
+        <input type="text" id="f-room" required placeholder="e.g. 101">
+      </div>
+      <div class="form-group">
+        <label>Building</label>
+        <input type="text" id="f-building" required placeholder="e.g. Block A">
+      </div>
+      <div class="form-group">
+        <label>Capacity</label>
+        <input type="number" id="f-cap" required min="1" max="200">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+let editMode = false;
+const API = '../api/rooms.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadRooms();
+})();
+
+async function loadRooms() {
+  const res  = await fetch(API + '?action=list');
+  const data = await res.json();
+  document.getElementById('capacity-row').innerHTML =
+    `<p class="stat-inline">Total Room Capacity: <strong>${data.total_capacity || 0}</strong></p>`;
+  const tbody = document.getElementById('rooms-tbody');
+  tbody.innerHTML = data.data && data.data.length
+    ? data.data.map(r => `
+        <tr>
+          <td>${r.room_no}</td><td>${r.building}</td><td>${r.capacity}</td>
+          <td>
+            <button class="btn btn-sm btn-warning" onclick='openModal("edit", ${JSON.stringify(r)})'>Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteRoom(${r.room_id})">Delete</button>
+          </td>
+        </tr>`).join('')
+    : '<tr><td colspan="4" class="text-center">No rooms found.</td></tr>';
+}
+
+function openModal(mode, r = null) {
+  editMode = mode === 'edit';
+  document.getElementById('modal-title').textContent = editMode ? 'Edit Room' : 'Add Room';
+  document.getElementById('edit-id').value    = r ? r.room_id : '';
+  document.getElementById('f-room').value     = r ? r.room_no : '';
+  document.getElementById('f-building').value = r ? r.building : '';
+  document.getElementById('f-cap').value      = r ? r.capacity : '';
+  document.getElementById('room-modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('room-modal').style.display = 'none'; }
+
+async function saveRoom(e) {
+  e.preventDefault();
+  const payload = {
+    action: editMode ? 'edit' : 'add',
+    room_id:  document.getElementById('edit-id').value,
+    room_no:  document.getElementById('f-room').value,
+    building: document.getElementById('f-building').value,
+    capacity: document.getElementById('f-cap').value,
+  };
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) { closeModal(); loadRooms(); }
+}
+
+async function deleteRoom(id) {
+  if (!confirm('Delete this room?')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'delete', room_id: id}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadRooms();
+}
+
+function exportCSV() { exportTableToCSV('rooms-table', 'rooms.csv'); }
+function filterTable() { filterTableFn('rooms-table', document.getElementById('search-input').value); }
+function sortTable(col) { sortTableFn('rooms-table', col); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

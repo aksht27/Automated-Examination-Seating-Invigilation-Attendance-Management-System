@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Replacement | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html" class="active"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Faculty Replacement</h1>
+      <div class="top-actions" id="faculty-actions" style="display:none">
+        <button class="btn btn-primary" onclick="openModal()">+ New Request</button>
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-header"><h2>Replacement Requests</h2></div>
+        <div class="card-body">
+          <table class="data-table" id="rep-table">
+            <thead>
+              <tr>
+                <th>Exam</th><th>Date</th><th>Room</th><th>Requested By</th>
+                <th>Replacement</th><th>Reason</th><th>Status</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rep-tbody"><tr><td colspan="8" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Request Modal (Faculty) -->
+<div id="req-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Request Replacement</h2>
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+    </div>
+    <form onsubmit="submitRequest(event)">
+      <div class="form-group">
+        <label>Exam</label>
+        <select id="f-exam" required>
+          <option value="">Select Exam</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Room</label>
+        <select id="f-room" required>
+          <option value="">Select Room</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Replacement Faculty</label>
+        <select id="f-rep" required>
+          <option value="">Select Faculty</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Reason</label>
+        <textarea id="f-reason" required rows="3" placeholder="State reason for replacement..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/replacement.php';
+let userRole = '';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  userRole = auth.role;
+  document.getElementById('user-label').textContent = auth.username + ' (' + userRole + ')';
+  if (userRole === 'faculty') {
+    document.getElementById('faculty-actions').style.display = '';
+    await loadFormData();
+  }
+  loadRequests();
+})();
+
+async function loadFormData() {
+  const [er, rr, fr] = await Promise.all([
+    fetch(API + '?action=list_exams').then(r => r.json()),
+    fetch(API + '?action=list_rooms').then(r => r.json()),
+    fetch(API + '?action=faculty_list').then(r => r.json()),
+  ]);
+  if (er.data) er.data.forEach(e => addOption('f-exam', e.exam_id, `${e.exam_name} (${e.date})`));
+  if (rr.data) rr.data.forEach(r => addOption('f-room', r.room_id, `${r.room_no} – ${r.building}`));
+  if (fr.data) fr.data.forEach(f => addOption('f-rep', f.faculty_id, `${f.name} (${f.department})`));
+}
+
+function addOption(selId, val, text) {
+  const opt = document.createElement('option');
+  opt.value = val; opt.textContent = text;
+  document.getElementById(selId).appendChild(opt);
+}
+
+async function loadRequests() {
+  const res  = await fetch(API + '?action=list');
+  const data = await res.json();
+  const tbody = document.getElementById('rep-tbody');
+  tbody.innerHTML = data.data && data.data.length
+    ? data.data.map(r => `
+        <tr>
+          <td>${r.exam_name}</td><td>${r.date}</td><td>${r.room_no}</td>
+          <td>${r.requestor ?? '—'}</td><td>${r.replacement_name ?? '—'}</td>
+          <td>${r.reason}</td>
+          <td><span class="status-badge ${r.status==='Approved'?'badge-green':r.status==='Rejected'?'badge-red':'badge-yellow'}">${r.status}</span></td>
+          <td>
+            ${(userRole==='admin' || userRole==='exam_cell') && r.status==='Pending' ? `
+              <button class="btn btn-sm btn-success" onclick="process(${r.log_id},'Approved')">✓</button>
+              <button class="btn btn-sm btn-danger"  onclick="process(${r.log_id},'Rejected')">✗</button>
+            ` : '—'}
+          </td>
+        </tr>`).join('')
+    : '<tr><td colspan="8" class="text-center">No replacement requests.</td></tr>';
+}
+
+function openModal() { document.getElementById('req-modal').style.display = 'flex'; }
+function closeModal() { document.getElementById('req-modal').style.display = 'none'; }
+
+async function submitRequest(e) {
+  e.preventDefault();
+  const payload = {
+    action: 'request',
+    exam_id: document.getElementById('f-exam').value,
+    room_id: document.getElementById('f-room').value,
+    replacement_faculty_id: document.getElementById('f-rep').value,
+    reason: document.getElementById('f-reason').value,
+  };
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) { closeModal(); loadRequests(); }
+}
+
+async function process(logId, status) {
+  if (!confirm(`${status} this request?`)) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'process', log_id: logId, status}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadRequests();
+}
+
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

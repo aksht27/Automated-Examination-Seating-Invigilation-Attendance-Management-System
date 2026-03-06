@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Portal | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+<style>
+.slip-card {
+  border: 2px solid var(--primary-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  background: #fff;
+}
+.slip-card h3 {
+  color: var(--primary-color);
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+}
+.slip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px;
+}
+.slip-field label { font-size: 0.78rem; color: #888; display: block; }
+.slip-field span  { font-weight: 600; font-size: 0.95rem; }
+@media print {
+  .sidebar, .top-bar, .no-print { display: none !important; }
+  .main-content { margin-left: 0 !important; }
+}
+</style>
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="student_portal.html" class="active"><i>🏠</i> Home</a>
+      <a href="#schedule-section"><i>📅</i> Exam Schedule</a>
+      <a href="#seating-section"><i>💺</i> Seating Slip</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Student Portal</h1>
+      <div class="top-actions no-print">
+        <button class="btn btn-secondary" onclick="window.print()">🖨 Print Seating Slip</button>
+      </div>
+    </header>
+    <div class="page-body">
+
+      <!-- Student Info Banner -->
+      <div class="card mb-4" id="info-card" style="display:none">
+        <div class="card-body">
+          <div class="slip-grid">
+            <div class="slip-field"><label>Roll Number</label><span id="s-roll"></span></div>
+            <div class="slip-field"><label>Full Name</label><span id="s-name"></span></div>
+            <div class="slip-field"><label>Branch</label><span id="s-branch"></span></div>
+            <div class="slip-field"><label>Semester</label><span id="s-sem"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exam Schedule -->
+      <div class="card mb-4" id="schedule-section">
+        <div class="card-header"><h2>Exam Schedule</h2></div>
+        <div class="card-body">
+          <table class="data-table">
+            <thead>
+              <tr><th>Exam Name</th><th>Subject</th><th>Date</th><th>Session</th><th>Start</th><th>End</th></tr>
+            </thead>
+            <tbody id="schedule-tbody">
+              <tr><td colspan="6" class="text-center">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Seating Slips -->
+      <div id="seating-section">
+        <h2 class="mb-3">My Seating Slips</h2>
+        <div id="slips-container">
+          <p class="text-center text-muted">Loading...</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/student.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in || auth.role !== 'student') {
+    window.location.href = '../index.html'; return;
+  }
+  document.getElementById('user-label').textContent = auth.username + ' (Student)';
+
+  const [infoR, schedR, seatR] = await Promise.all([
+    fetch(API + '?action=info').then(r => r.json()),
+    fetch(API + '?action=schedule').then(r => r.json()),
+    fetch(API + '?action=seating').then(r => r.json()),
+  ]);
+
+  // Student info
+  if (infoR.success && infoR.data) {
+    const s = infoR.data;
+    document.getElementById('info-card').style.display = '';
+    document.getElementById('s-roll').textContent   = s.roll_no;
+    document.getElementById('s-name').textContent   = s.name;
+    document.getElementById('s-branch').textContent = s.branch;
+    document.getElementById('s-sem').textContent    = s.semester;
+  }
+
+  // Schedule
+  const stb = document.getElementById('schedule-tbody');
+  stb.innerHTML = schedR.data && schedR.data.length
+    ? schedR.data.map(e => `
+        <tr>
+          <td>${e.exam_name}</td><td>${e.subject_name||'-'}</td>
+          <td>${e.exam_date||'-'}</td><td>${e.session}</td>
+          <td>${e.start_time||'-'}</td><td>${e.end_time||'-'}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="6" class="text-center">No exams scheduled.</td></tr>';
+
+  // Seating slips
+  const sc = document.getElementById('slips-container');
+  if (seatR.data && seatR.data.length) {
+    sc.innerHTML = seatR.data.map(s => `
+      <div class="slip-card">
+        <h3>📋 ${s.exam_name} — ${s.date}</h3>
+        <div class="slip-grid">
+          <div class="slip-field"><label>Student Name</label><span>${s.name}</span></div>
+          <div class="slip-field"><label>Roll Number</label><span>${s.roll_no}</span></div>
+          <div class="slip-field"><label>Branch / Semester</label><span>${s.branch} — Sem ${s.semester}</span></div>
+          <div class="slip-field"><label>Subject</label><span>${s.subject_name||'-'}</span></div>
+          <div class="slip-field"><label>Room</label><span>${s.room_no} (${s.building})</span></div>
+          <div class="slip-field"><label>Seat No / Row</label><span>${s.seat_no} / Row ${s.row_no}</span></div>
+          <div class="slip-field"><label>Start Time</label><span>${s.start_time||'-'}</span></div>
+          <div class="slip-field"><label>End Time</label><span>${s.end_time||'-'}</span></div>
+        </div>
+      </div>`).join('');
+  } else {
+    sc.innerHTML = '<p class="text-center text-muted">No seating allocated yet.</p>';
+  }
+})();
+
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

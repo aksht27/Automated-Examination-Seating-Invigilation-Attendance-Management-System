@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invigilation | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html" class="active"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Invigilation Duties</h1>
+    </header>
+    <div class="page-body">
+      <div class="card mb-4">
+        <div class="card-body row-flex">
+          <div class="form-group mb-0 flex-1">
+            <label>Select Exam</label>
+            <select id="exam-select" onchange="loadDuties()">
+              <option value="">-- Select Exam --</option>
+            </select>
+          </div>
+          <div class="btn-group ml-auto">
+            <button class="btn btn-primary" onclick="allocate()">🔧 Auto Assign</button>
+            <button class="btn btn-danger" onclick="clearDuties()">🗑 Clear</button>
+            <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+            <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2>Duty Chart</h2></div>
+        <div class="card-body">
+          <table class="data-table" id="duty-table">
+            <thead>
+              <tr>
+                <th>Room No</th><th>Building</th><th>Faculty Name</th>
+                <th>Department</th><th>Duty Type</th>
+              </tr>
+            </thead>
+            <tbody id="duty-tbody"><tr><td colspan="5" class="text-center">Select an exam.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/invigilation.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadExams();
+})();
+
+async function loadExams() {
+  const res  = await fetch(API + '?action=list_exams');
+  const data = await res.json();
+  const sel  = document.getElementById('exam-select');
+  if (data.data) data.data.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.exam_id;
+    opt.textContent = `${e.exam_name} (${e.date})`;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadDuties() {
+  const eid = document.getElementById('exam-select').value;
+  if (!eid) return;
+  const res  = await fetch(`${API}?action=get_duties&exam_id=${eid}`);
+  const data = await res.json();
+  const tbody = document.getElementById('duty-tbody');
+  tbody.innerHTML = data.data && data.data.length
+    ? data.data.map(d => `
+        <tr>
+          <td>${d.room_no}</td><td>${d.building}</td><td>${d.faculty_name}</td>
+          <td>${d.department}</td>
+          <td><span class="status-badge ${d.duty_type === 'Chief Invigilator' ? 'badge-blue' : 'badge-green'}">${d.duty_type}</span></td>
+        </tr>`).join('')
+    : '<tr><td colspan="5" class="text-center">No duties assigned yet.</td></tr>';
+}
+
+async function allocate() {
+  const eid = document.getElementById('exam-select').value;
+  if (!eid) { showToast('Select an exam first.', 'error'); return; }
+  if (!confirm('Auto-assign invigilation duties?')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'allocate', exam_id: eid}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadDuties();
+}
+
+async function clearDuties() {
+  const eid = document.getElementById('exam-select').value;
+  if (!eid) { showToast('Select an exam first.', 'error'); return; }
+  if (!confirm('Clear all duties for this exam?')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'clear', exam_id: eid}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadDuties();
+}
+
+function exportCSV() { exportTableToCSV('duty-table', 'invigilation.csv'); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

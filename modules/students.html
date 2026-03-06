@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Students | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html" class="active"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Students</h1>
+      <div class="top-actions">
+        <input type="text" id="search-input" placeholder="Search students..." oninput="filterTable()" class="search-box">
+        <button class="btn btn-primary" onclick="openModal('add')">+ Add Student</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('csv-input').click()">📤 Import CSV</button>
+        <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+        <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="uploadCSV(event)">
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-body">
+          <table class="data-table" id="students-table">
+            <thead>
+              <tr>
+                <th onclick="sortTable(0)">Roll No ↕</th>
+                <th onclick="sortTable(1)">Name ↕</th>
+                <th onclick="sortTable(2)">Branch ↕</th>
+                <th onclick="sortTable(3)">Semester ↕</th>
+                <th onclick="sortTable(4)">Section ↕</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="student-tbody"><tr><td colspan="6" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add/Edit Modal -->
+<div id="student-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Add Student</h2>
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+    </div>
+    <form id="student-form" onsubmit="saveStudent(event)">
+      <input type="hidden" id="edit-id">
+      <div class="form-group">
+        <label>Roll Number</label>
+        <input type="text" id="f-roll" required placeholder="e.g. 21CE001">
+      </div>
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="f-name" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Branch</label>
+          <input type="text" id="f-branch" required placeholder="e.g. Computer Engineering">
+        </div>
+        <div class="form-group">
+          <label>Semester</label>
+          <select id="f-sem" required>
+            <option value="">Select</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+            <option>5</option><option>6</option><option>7</option><option>8</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Section</label>
+          <input type="text" id="f-section" required placeholder="e.g. A">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+let editMode = false;
+const API = '../api/students.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadStudents();
+})();
+
+async function loadStudents() {
+  const res  = await fetch(API + '?action=list');
+  const data = await res.json();
+  const tbody = document.getElementById('student-tbody');
+  if (!data.success) { tbody.innerHTML = '<tr><td colspan="6" class="text-center">Error loading.</td></tr>'; return; }
+  tbody.innerHTML = data.data.length
+    ? data.data.map(s => `
+        <tr>
+          <td>${s.roll_no}</td>
+          <td>${s.name}</td>
+          <td>${s.branch}</td>
+          <td>${s.semester}</td>
+          <td>${s.section}</td>
+          <td>
+            <button class="btn btn-sm btn-warning" onclick='openModal("edit", ${JSON.stringify(s)})'>Edit</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteStudent(${s.student_id})">Delete</button>
+          </td>
+        </tr>`).join('')
+    : '<tr><td colspan="6" class="text-center">No students found.</td></tr>';
+}
+
+function openModal(mode, s = null) {
+  editMode = mode === 'edit';
+  document.getElementById('modal-title').textContent = editMode ? 'Edit Student' : 'Add Student';
+  document.getElementById('edit-id').value  = s ? s.student_id : '';
+  document.getElementById('f-roll').value   = s ? s.roll_no : '';
+  document.getElementById('f-name').value   = s ? s.name : '';
+  document.getElementById('f-branch').value = s ? s.branch : '';
+  document.getElementById('f-sem').value    = s ? s.semester : '';
+  document.getElementById('f-section').value = s ? s.section : '';
+  document.getElementById('student-modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('student-modal').style.display = 'none'; }
+
+async function saveStudent(e) {
+  e.preventDefault();
+  const payload = {
+    action: editMode ? 'edit' : 'add',
+    student_id: document.getElementById('edit-id').value,
+    roll_no: document.getElementById('f-roll').value,
+    name:    document.getElementById('f-name').value,
+    branch:  document.getElementById('f-branch').value,
+    semester: document.getElementById('f-sem').value,
+    section:  document.getElementById('f-section').value,
+  };
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) { closeModal(); loadStudents(); }
+}
+
+async function deleteStudent(id) {
+  if (!confirm('Delete this student?')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'delete', student_id: id}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadStudents();
+}
+
+async function uploadCSV(e) {
+  const form = new FormData();
+  form.append('csv_file', e.target.files[0]);
+  form.append('action', 'upload_csv');
+  const res  = await fetch(API, { method: 'POST', body: form });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadStudents();
+}
+
+function exportCSV() { exportTableToCSV('students-table', 'students.csv'); }
+function filterTable() { filterTableFn('students-table', document.getElementById('search-input').value); }
+function sortTable(col) { sortTableFn('students-table', col); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>

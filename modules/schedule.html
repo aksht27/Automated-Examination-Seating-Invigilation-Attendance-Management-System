@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exam Schedule | Exam Management</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="app-wrapper">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><h2>Exam System</h2><p id="user-label"></p></div>
+    <nav class="nav-links">
+      <a href="../dashboard.html"><i>⊞</i> Dashboard</a>
+      <a href="students.html"><i>👥</i> Students</a>
+      <a href="faculty.html"><i>👨‍🏫</i> Faculty</a>
+      <a href="rooms.html"><i>🚪</i> Rooms</a>
+      <a href="schedule.html" class="active"><i>📅</i> Schedule</a>
+      <a href="seating.html"><i>💺</i> Seating</a>
+      <a href="invigilation.html"><i>📋</i> Invigilation</a>
+      <a href="attendance.html"><i>✅</i> Attendance</a>
+      <a href="replacement.html"><i>🔄</i> Replacement</a>
+      <a href="reports.html"><i>📊</i> Reports</a>
+      <hr>
+      <a href="#" onclick="logout()"><i>🚪</i> Logout</a>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="top-bar">
+      <button onclick="toggleSidebar()" class="menu-btn">☰</button>
+      <h1>Exam Schedule</h1>
+      <div class="top-actions">
+        <button class="btn btn-primary" onclick="openModal()">+ Add Exam</button>
+        <button class="btn btn-success" onclick="exportCSV()">⬇ Export</button>
+      </div>
+    </header>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-body">
+          <table class="data-table" id="schedule-table">
+            <thead>
+              <tr>
+                <th>Exam Name</th><th>Subject</th><th>Date</th>
+                <th>Session</th><th>Start</th><th>End</th><th>Duration</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="schedule-tbody"><tr><td colspan="8" class="text-center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="schedule-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Add Exam</h2>
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+    </div>
+    <form onsubmit="saveExam(event)">
+      <div class="form-group">
+        <label>Exam Name</label>
+        <input type="text" id="f-exam" required placeholder="e.g. Mid-Term Exam 2024">
+      </div>
+      <div class="form-group">
+        <label>Subject Name</label>
+        <input type="text" id="f-subject" required placeholder="e.g. Data Structures">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="f-date" required>
+        </div>
+        <div class="form-group">
+          <label>Session</label>
+          <select id="f-session" required>
+            <option value="Morning">Morning</option>
+            <option value="Afternoon">Afternoon</option>
+            <option value="Evening">Evening</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Start Time</label>
+          <input type="time" id="f-start" required>
+        </div>
+        <div class="form-group">
+          <label>End Time</label>
+          <input type="time" id="f-end" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="../js/script.js"></script>
+<script>
+const API = '../api/schedule.php';
+
+(async () => {
+  const res  = await fetch('../api/auth.php?action=check');
+  const auth = await res.json();
+  if (!auth.logged_in) { window.location.href = '../index.html'; return; }
+  document.getElementById('user-label').textContent = auth.username + ' (' + auth.role + ')';
+  loadSchedule();
+})();
+
+async function loadSchedule() {
+  const res  = await fetch(API + '?action=list');
+  const data = await res.json();
+  const tbody = document.getElementById('schedule-tbody');
+  tbody.innerHTML = data.data && data.data.length
+    ? data.data.map(e => `
+        <tr>
+          <td>${e.exam_name}</td><td>${e.subject_name||'-'}</td><td>${e.date}</td>
+          <td>${e.session}</td><td>${e.start_time||'-'}</td><td>${e.end_time||'-'}</td>
+          <td>${e.duration ? e.duration+' min' : '-'}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteExam(${e.exam_id})">Delete</button></td>
+        </tr>`).join('')
+    : '<tr><td colspan="8" class="text-center">No exams scheduled.</td></tr>';
+}
+
+function openModal() { document.getElementById('schedule-modal').style.display = 'flex'; }
+function closeModal() { document.getElementById('schedule-modal').style.display = 'none'; }
+
+async function saveExam(e) {
+  e.preventDefault();
+  const payload = {
+    action: 'add',
+    exam_name:    document.getElementById('f-exam').value,
+    subject_name: document.getElementById('f-subject').value,
+    exam_date:    document.getElementById('f-date').value,
+    session:      document.getElementById('f-session').value,
+    start_time:   document.getElementById('f-start').value,
+    end_time:     document.getElementById('f-end').value,
+  };
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) { closeModal(); loadSchedule(); }
+}
+
+async function deleteExam(id) {
+  if (!confirm('Delete this exam? All related seating/invigilation will also be removed.')) return;
+  const res  = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'delete', exam_id: id}) });
+  const data = await res.json();
+  showToast(data.message, data.success ? 'success' : 'error');
+  if (data.success) loadSchedule();
+}
+
+function exportCSV() { exportTableToCSV('schedule-table', 'schedule.csv'); }
+async function logout() {
+  await fetch('../api/auth.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'logout'}) });
+  window.location.href = '../index.html';
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+</script>
+</body>
+</html>
